@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: forevi
+      POSTGRES_PASSWORD: forevi
+      POSTGRES_DB: forevi
+    volumes:
+      - forevi_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forevi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://forevi:forevi@db:5432/forevi
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-0000000000000000000000000000000000000000}
+      CORS_ORIGINS: http://localhost:8080
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@forevi.in}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe@123}
+      ENVIRONMENT: production
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: >
+      sh -c "python seed_admin.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    ports:
+      - "8000:8000"
+
+  web:
+    build: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  forevi_db:
